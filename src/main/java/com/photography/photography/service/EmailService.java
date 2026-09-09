@@ -1,20 +1,28 @@
 package com.photography.photography.service;
 
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    @Value("${brevo.api.key}")
+    private String brevoApiKey;
 
-    private final String adminEmail =
-            "priya230230ram@gmail.com";
+    private final String adminEmail = "priya230230ram@gmail.com";
+    private final String senderEmail = "priya230230ram@gmail.com";
+    private final String senderName = "Priya Photography";
 
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
-    }
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public void sendBookingNotification(
             String name,
@@ -25,29 +33,20 @@ public class EmailService {
             String location,
             String message) {
 
-        SimpleMailMessage mail = new SimpleMailMessage();
+        String subject = "New Photography Booking - " + name;
 
-        mail.setTo(adminEmail);
-
-        mail.setSubject(
-                "New Photography Booking - " + name
-        );
-
-        mail.setText(
+        String text =
                 "New Photography Booking\n\n" +
-
                 "Name: " + name + "\n" +
                 "Phone: " + phone + "\n" +
                 "Email: " + email + "\n" +
                 "Event Type: " + eventType + "\n" +
                 "Event Date: " + eventDate + "\n" +
                 "Location: " + location + "\n" +
-                "Message: " + message
-        );
+                "Message: " + message;
 
-        mailSender.send(mail);
+        sendEmail(subject, text);
     }
-
 
     public void sendContactNotification(
             String name,
@@ -56,26 +55,75 @@ public class EmailService {
             String subject,
             String message) {
 
-        SimpleMailMessage mail = new SimpleMailMessage();
+        String mailSubject = "New Contact Message - " + subject;
 
-        mail.setTo(adminEmail);
-
-        mail.setSubject(
-                "New Contact Message - " + subject
-        );
-
-        mail.setText(
+        String text =
                 "New Contact Message\n\n" +
-
                 "Name: " + name + "\n" +
                 "Email: " + email + "\n" +
                 "Phone: " + phone + "\n" +
                 "Subject: " + subject + "\n\n" +
-
                 "Message:\n" +
-                message
-        );
+                message;
 
-        mailSender.send(mail);
+        sendEmail(mailSubject, text);
+    }
+
+    private void sendEmail(String subject, String text) {
+
+        try {
+
+            Map<String, Object> emailData = Map.of(
+                    "sender", Map.of(
+                            "name", senderName,
+                            "email", senderEmail
+                    ),
+                    "to", List.of(
+                            Map.of(
+                                    "email", adminEmail,
+                                    "name", "Priya"
+                            )
+                    ),
+                    "subject", subject,
+                    "textContent", text
+            );
+
+            String json = objectMapper.writeValueAsString(emailData);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                    .header("accept", "application/json")
+                    .header("api-key", brevoApiKey)
+                    .header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+
+            HttpResponse<String> response =
+                    httpClient.send(
+                            request,
+                            HttpResponse.BodyHandlers.ofString()
+                    );
+
+            if (response.statusCode() >= 200 &&
+                response.statusCode() < 300) {
+
+                System.out.println("Brevo email sent successfully.");
+
+            } else {
+
+                System.out.println(
+                        "Brevo email failed. Status: "
+                                + response.statusCode()
+                                + " Response: "
+                                + response.body()
+                );
+            }
+
+        } catch (Exception e) {
+
+            System.out.println(
+                    "Brevo email error: " + e.getMessage()
+            );
+        }
     }
 }
